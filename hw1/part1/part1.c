@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
-
 #include <omp.h>
 
 // Declaration of subroutines
@@ -40,6 +39,7 @@ void main() {
     double alloc_x_time;
     double alloc_y_time;
     double init_x_time;
+    double init_x_time2;
     double smooth_time;
     double count_x_time;
     double count_y_time;
@@ -65,6 +65,14 @@ void main() {
     initialize(x_array, array_size);
     clock_gettime(CLOCK_MONOTONIC, &stop);
     init_x_time = (stop.tv_sec - start.tv_sec) + (double) (stop.tv_nsec - start.tv_nsec) / 1000000000;
+    printf(" OK\n");
+
+    // Initialize x_array part 2
+    printf("Initalizing arrays part 2 . . .");
+    clock_gettime(CLOCK_MONOTONIC, &start);
+    initialize(x_array, array_size);
+    clock_gettime(CLOCK_MONOTONIC, &stop);
+    init_x_time2 = (stop.tv_sec - start.tv_sec) + (double) (stop.tv_nsec - start.tv_nsec) / 1000000000;
     printf(" OK\n");
 
 
@@ -96,31 +104,32 @@ void main() {
 
 
     // Print outputs
-    printf("Summary\n-------\n");
-    printf("Number of elements in a row/column       ::   %3d\n", array_size);
-    printf("Number of inner elements in a row/column ::   %3d\n", array_size - 2);
-    printf("Total number of elements                 ::   %3.0f\n", num_elements);
-    printf("Total number of inner elements           ::   %3.0f\n", num_in_elements);
-    printf("Memory (GB) used per array               ::   %3f\n", (sizeof(float) * num_elements) / 1073741824.0);
-    printf("Threshold                                ::   %.3f\n", threshold);
-    printf("Smoothing constants (a, b, c)            ::   %.2f %.2f %.2f\n", a, b, c);
+    printf("---------- Summary ----------\n");
+    printf("%-45s: %3d\n", "Number of elements in a row/column", array_size);
+    printf("%-45s: %3d\n", "Number of inner elements in a row/column", array_size - 2);
+    printf("%-45s: %3.0f\n", "Total number of elements", num_elements);
+    printf("%-45s: %3.0f\n", "Total number of inner elements", num_in_elements);
+    printf("%-45s: %3f\n", "Memory (GB) used per array", (sizeof(float) * num_elements) / 1073741824.0);
+    printf("%-45s: %.3f\n", "Threshold", threshold);
+    printf("%-45s: %.2f %.2f %.2f\n", "Smoothing constants (a, b, c)", a, b, c);
 
-    printf("--- Inner Element Information ---\n");
-    printf("Number   of elements below threshold (x) ::   %ld\n", x_below_elements);
-    printf("Fraction of elements below threshold (x) ::   %3f\n", x_below_elements / num_in_elements);
-    printf("Number   of elements below threshold (y) ::   %ld\n", y_below_elements);
-    printf("Fraction of elements below threshold (y) ::   %3f\n", y_below_elements / num_in_elements);
+    printf("\n--- Inner Element Information ---\n");
+    printf("%-45s: %ld\n", "Number   of elements below threshold (x)", x_below_elements);
+    printf("%-45s: %3f\n", "Fraction of elements below threshold (x)", x_below_elements / num_in_elements);
+    printf("%-45s: %ld\n", "Number   of elements below threshold (y)", y_below_elements);
+    printf("%-45s: %3f\n", "Fraction of elements below threshold (y)", y_below_elements / num_in_elements);
 
-    printf("\n\nAction\n------\n");
-    printf("CPU: Alloc-x           ::   %.3f\n", alloc_x_time);
-    printf("CPU: Alloc-y           ::   %.3f\n", alloc_y_time);
-    printf("CPU: Init-x            ::   %.3f\n", init_x_time);
-    printf("CPU: Smooth            ::   %.3f\n", smooth_time);
-    printf("CPU: Count-x           ::   %.3f\n", count_x_time);
-    printf("CPU: Count-y           ::   %.3f\n", count_y_time);
+    printf("\n----- Action -----\n");
+    printf("%-25s: %.3f\n", "CPU: Alloc-x", alloc_x_time);
+    printf("%-25s: %.3f\n", "CPU: Alloc-y", alloc_y_time);
+    printf("%-25s: %.3f\n", "CPU: Init-x", init_x_time);
+    printf("%-25s: %.3f\n", "CPU: Init-x 2", init_x_time2);
+    printf("%-25s: %.3f\n", "CPU: Smooth", smooth_time);
+    printf("%-25s: %.3f\n", "CPU: Count-x", count_x_time);
+    printf("%-25s: %.3f\n", "CPU: Count-y", count_y_time);
 
     #ifdef _OPENMP
-    printf("OMP: Number of threads ::   %d\n", omp_get_max_threads());
+    printf("%-25s: %d\n", "OMP: Number of threads", omp_get_max_threads());
     #endif
 
 
@@ -130,19 +139,18 @@ void main() {
 }
 
 void initialize(float *array, long array_size) {
-    //printf("array size: %d\n", array_size);
-    #pragma omp parallel for collapse(2)
-        for (long i = 0; i < array_size; i++) {
-            for (long j = 0; j < array_size; j++) {
+    #pragma omp parallel for collapse(2) schedule(static)
+        for (int j = 0; j < array_size; j++) {
+            for (int i = 0; i < array_size; i++) {
                 array[i + j * array_size] = (float)abs(i % 11 - j % 5) / (i % 7 + j % 3 + 1);
             }
         }
 }
 
 void smooth(float *array, float *out_array, long array_size, float a, float b, float c) {
-    #pragma omp parallel for collapse(2)
-        for (long i = 1; i < array_size - 1; i++) {
-            for (long j = 1; j < array_size - 1; j++) {
+    #pragma omp parallel for collapse(2) schedule(static)
+        for (int j = 1; j < array_size - 1; j++) {
+            for (int i = 1; i < array_size - 1; i++) {
                 out_array[i + j * array_size] = 
                     a * (array[(i - 1) + (j - 1) * array_size] +
                         array[(i - 1) + (j + 1) * array_size] +
@@ -160,9 +168,9 @@ void smooth(float *array, float *out_array, long array_size, float a, float b, f
 void count(float *array, long array_size, float threshold, long *below_threshold) {
     long temp = 0;
 
-    #pragma omp parallel for collapse(2) reduction(+:temp)
-        for (long i = 1; i < array_size - 1; i++) {
-            for (long j = 1; j < array_size - 1; j++) {
+    #pragma omp parallel for collapse(2) reduction(+:temp) schedule(static)
+        for (int j = 1; j < array_size - 1; j++) {
+            for (int i = 1; i < array_size - 1; i++) {
                 if (array[i + j * array_size] < threshold) {
                     temp++;
                 }
