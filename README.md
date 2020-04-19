@@ -1,2 +1,2 @@
 # pcse
-Files from PCSE2020
+Class files for Parallel Computing for Science and Engineering 2020
