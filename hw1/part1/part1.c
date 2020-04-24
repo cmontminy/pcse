@@ -67,13 +67,13 @@ void main() {
     init_x_time = (stop.tv_sec - start.tv_sec) + (double) (stop.tv_nsec - start.tv_nsec) / 1000000000;
     printf(" OK\n");
 
-    // Initialize x_array part 2
-    printf("Initalizing arrays part 2 . . .");
-    clock_gettime(CLOCK_MONOTONIC, &start);
-    initialize(x_array, array_size);
-    clock_gettime(CLOCK_MONOTONIC, &stop);
-    init_x_time2 = (stop.tv_sec - start.tv_sec) + (double) (stop.tv_nsec - start.tv_nsec) / 1000000000;
-    printf(" OK\n");
+    //Initialize x_array part 2
+    // printf("Initalizing arrays part 2 . . .");
+    // clock_gettime(CLOCK_MONOTONIC, &start);
+    // initialize(x_array, array_size);
+    // clock_gettime(CLOCK_MONOTONIC, &stop);
+    // init_x_time2 = (stop.tv_sec - start.tv_sec) + (double) (stop.tv_nsec - start.tv_nsec) / 1000000000;
+    // printf(" OK\n");
 
 
     // Smooth x_array to derive y_array
@@ -123,7 +123,7 @@ void main() {
     printf("%-25s: %.3f\n", "CPU: Alloc-x", alloc_x_time);
     printf("%-25s: %.3f\n", "CPU: Alloc-y", alloc_y_time);
     printf("%-25s: %.3f\n", "CPU: Init-x", init_x_time);
-    printf("%-25s: %.3f\n", "CPU: Init-x 2", init_x_time2);
+    //printf("%-25s: %.3f\n", "CPU: Init-x 2", init_x_time2);
     printf("%-25s: %.3f\n", "CPU: Smooth", smooth_time);
     printf("%-25s: %.3f\n", "CPU: Count-x", count_x_time);
     printf("%-25s: %.3f\n", "CPU: Count-y", count_y_time);

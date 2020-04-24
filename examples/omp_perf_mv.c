@@ -46,17 +46,18 @@ int main() {
     int dot_times = 1;
 
     //Chunk size in MB
-    float C_size_MB=0.5;
+    float C_size_MB = 10.0;
     
     //Chunk size - number of elements
     int C_size= C_size_MB*1024*1024/sizeof(float);
 
     //Number of chunks
-    int C = N/C_size;
+    int C = ceil((float) N/C_size);
+    C_size = N/C;
     
     ///No cache use
-    //C = 1;
-    //C_size=N;
+    C = 1;
+    C_size=N;
 
     // Start timer
     double start = omp_get_wtime();
@@ -137,11 +138,11 @@ int main() {
     float per_of_peak_ops_skt = 100.0 * ops_per_clk / peak_ops_per_clk_per_skt;
 
     printf("================== Results ====================\n");
-    printf("%-31s: %10ld\n", "Number of elements per array" , 2 * N);
-    printf("%-31s: %10.2f MB\n\n", "Size of each array" ,(float) sizeof(float) * (float) N / mb);
+    printf("%-31s: %10ld\n", "Number of elements in one direction per array" , N);
+    printf("%-31s: %10.2f MB\n\n", "Size of each array" ,(float) sizeof(float) * (float) N * M / mb);
 
     printf("%-31s: %10ld\n", "Number of elements per chunk" , C_size);
-    printf("%-31s: %10ld MB\n", "Size of each chunk" , C_size_MB);
+    printf("%-31s: %10f MB\n", "Size of each chunk" , C_size_MB);
     printf("%-31s: %10ld \n\n", "Number of chunks" , C);
 
 
