@@ -1,8 +1,9 @@
 // Main code for IDEA project
 
-#include "idea.h"
+#include "p-idea.h"
 
 #include <stdio.h>
+#include <time.h>
 #include <omp.h>
 
 void encrypt(int64_t *, int64_t *, int);
@@ -11,7 +12,7 @@ void main(int argc, char *argv[]) {
 
     // set number of threads
     #ifdef _OPENMP
-    omp_set_num_threads(8);
+    omp_set_num_threads(64);
     #endif
     // Dummy parallel region to startup threads
     #pragma omp parallel
@@ -22,12 +23,10 @@ void main(int argc, char *argv[]) {
     }
 
     // declare variables
-    double time_start;
-    double time_end;
+    struct timespec start, stop;
 
     double malloc_time;
     double split_time;
-    double keys_time;
     double encrypt_time;
 
     // pass [key] [infile]
@@ -71,36 +70,35 @@ void main(int argc, char *argv[]) {
     rewind(fp);
 
     // add one to num_chunks if theres leftover
-    int num_chunks = (size % 8 != 0) ? (size / 8) + 1 : size / 8;
+    int64_t num_chunks = (size % 8 != 0) ? (size / 8) + 1 : size / 8;
 
     // malloc an array based on number of chunks and for keys
-    time_start = gtod_timer();
-    int64_t *chunks = (int64_t*)malloc(num_chunks);
+    clock_gettime(CLOCK_MONOTONIC, &start);
+    int64_t *chunks = malloc(num_chunks * sizeof(int64_t));
     int64_t keys[52];
-    time_end = gtod_timer();
-    malloc_time = time_end - time_start;
+    clock_gettime(CLOCK_MONOTONIC, &stop);
+    malloc_time = (stop.tv_sec - start.tv_sec) + (double) (stop.tv_nsec - start.tv_nsec) / 1000000000;
 
     // split file based on chunk size
-    time_start = gtod_timer();
+    clock_gettime(CLOCK_MONOTONIC, &start);
     split_file(fp, chunks, num_chunks);
-    time_end = gtod_timer();
-    split_time = time_end - time_start;
+    clock_gettime(CLOCK_MONOTONIC, &stop);
+    split_time = (stop.tv_sec - start.tv_sec) + (double) (stop.tv_nsec - start.tv_nsec) / 1000000000;
+    fclose(fp);
 
     // generate keys based on passed key
-    time_start = gtod_timer();
     gen_sub_keys(key, keys);
-    time_end = gtod_timer();
-    keys_time = time_end - time_start;
 
     // run encryption
-    time_start = gtod_timer();
+    clock_gettime(CLOCK_MONOTONIC, &start);
     encrypt(chunks, keys, num_chunks);
-    time_end = gtod_timer();
-    encrypt_time = time_end - time_start;
+    clock_gettime(CLOCK_MONOTONIC, &stop);
+    encrypt_time = (stop.tv_sec - start.tv_sec) + (double) (stop.tv_nsec - start.tv_nsec) / 1000000000;
 
     // write chunks out
-    fp = fopen("out.txt", "w");
-    fwrite(chunks, 8, num_chunks, fp);
+    // fp = fopen("out.txt", "w");
+    // fwrite(chunks, 8, num_chunks, fp);
+    // fclose(fp);
 
     //free(chunks);
 
@@ -152,13 +150,12 @@ void main(int argc, char *argv[]) {
     printf("\n---------- Summary ----------\n");
     printf("%-35s: %10s\n", "File encrypted", infile);
     printf("%-35s: %10s\n", "Key", str_key);
-    printf("%-35s: %10d MB\n", "Size of file", size / 1000);
+    printf("%-35s: %10.3f MB\n", "Size of file", (float) size / 1000000);
     printf("%-35s: %10d\n", "Number of chunks", num_chunks);
 
     printf("\n---------- Timing -----------\n");
     printf("%-35s: %10.3f\n", "Malloc", malloc_time);
     printf("%-35s: %10.3f\n", "Split file", split_time);
-    printf("%-35s: %10.3f\n", "Sub key generation", keys_time);
     printf("%-35s: %10.3f\n", "Encryption", encrypt_time);
 
     printf("\n--------- Computing ---------\n");
@@ -172,61 +169,61 @@ void main(int argc, char *argv[]) {
 
     printf("\n---------- OpenMP -----------\n");
     #ifdef _OPENMP
-    printf("%-25s: %d\n", "OMP: Number of threads", omp_get_max_threads());
+    printf("%-35s: %10d\n", "Number of threads", omp_get_max_threads());
     #endif
 
 }
 
 void encrypt(int64_t *chunks, int64_t *keys, int num_chunks) {
 
-    int16_t steps[14];
-    int16_t subchunks[4];
-    int64_t temp;
-    int64_t final_chunk;
-    int64_t offset;
+    #pragma omp parallel for schedule(static) //private(temp, final_chunk, offset, mask, steps, subchunks)
+        for (int i = 0; i < num_chunks; i++) {
+            int16_t steps[14];
+            int16_t subchunks[4];
+            int64_t temp;
+            int64_t final_chunk;
+            int64_t offset;
+            uint64_t mask = 0xFFFF; 
+            // split chunk
+            subchunks[0] = chunks[i] & (mask << 48);
+            subchunks[1] = chunks[i] & (mask << 32);
+            subchunks[2] = chunks[i] & (mask << 16);
+            subchunks[3] = chunks[i] & mask;
 
-    for (int i = 0; i < num_chunks; i++) {
-        // split chunk
-        uint64_t mask = 0xFFFF; 
-        subchunks[0] = chunks[i] & (mask << 48);
-        subchunks[1] = chunks[i] & (mask << 32);
-        subchunks[2] = chunks[i] & (mask << 16);
-        subchunks[3] = chunks[i] & mask;
+            // rounds- 224 total ops
+            for (int j = 0; j < 8; j++) {
+                offset = j*6;
+                steps[0] = (subchunks[0] * keys[(offset)]) % 17;
+                steps[1] = (subchunks[1] + keys[(offset) + 1]) % 16;
+                steps[2] = (subchunks[2] + keys[(offset) + 2]) % 16;
+                steps[3] = (subchunks[3] * keys[(offset) + 3]) % 17;
 
-        // rounds- 224 total ops
-        for (int j = 0; j < 8; j++) {
-            offset = j*6;
-            steps[0] = (subchunks[0] * keys[(offset)]) % 17;
-            steps[1] = (subchunks[1] + keys[(offset) + 1]) % 16;
-            steps[2] = (subchunks[2] + keys[(offset) + 2]) % 16;
-            steps[3] = (subchunks[3] * keys[(offset) + 3]) % 17;
+                steps[4] = steps[0] ^ steps[2];
+                steps[5] = steps[1] ^ steps[3];
 
-            steps[4] = steps[0] ^ steps[2];
-            steps[5] = steps[1] ^ steps[3];
+                steps[6] = (steps[4] * keys[(offset) + 4]) % 17;
+                steps[7] = (steps[5] + steps[6]) % 16;
+                steps[8] = (steps[7] * keys[(offset) + 5]) % 17;
+                steps[9] = (steps[6] +  steps[8]) % 16;
 
-            steps[6] = (steps[4] * keys[(offset) + 4]) % 17;
-            steps[7] = (steps[5] + steps[6]) % 16;
-            steps[8] = (steps[7] * keys[(offset) + 5]) % 17;
-            steps[9] = (steps[6] +  steps[8]) % 16;
+                steps[10] = steps[0] ^ steps[8];
+                steps[11] = steps[2] ^ steps[8];
+                steps[12] = steps[1] ^ steps[9];
+                steps[13] = steps[3] ^ steps[9];
+            }
 
-            steps[10] = steps[0] ^ steps[8];
-            steps[11] = steps[2] ^ steps[8];
-            steps[12] = steps[1] ^ steps[9];
-            steps[13] = steps[3] ^ steps[9];
+            subchunks[0] = (subchunks[0] * keys[48]) % 17;
+            subchunks[1] = (subchunks[1] + keys[49]) % 16;
+            subchunks[2] = (subchunks[2] + keys[50]) % 16;
+            subchunks[3] = (subchunks[3] * keys[51]) % 17;
+
+            // combine chunk back together - 16 total ops
+            for (int x = 0; x < 4; x++) {
+                temp = subchunks[x];
+                temp = temp << (48 - (16*x));
+                final_chunk |= temp;
+            }
+
+            chunks[i] = final_chunk;
         }
-
-        subchunks[0] = (subchunks[0] * keys[48]) % 17;
-        subchunks[1] = (subchunks[1] + keys[49]) % 16;
-        subchunks[2] = (subchunks[2] + keys[50]) % 16;
-        subchunks[3] = (subchunks[3] * keys[51]) % 17;
-
-        // combine chunk back together - 16 total ops
-        for (int x = 0; x < 4; x++) {
-            temp = subchunks[x];
-            temp = temp << (48 - (16*x));
-            final_chunk |= temp;
-        }
-
-        chunks[i] = final_chunk;
-    }
 }
